@@ -1,0 +1,433 @@
+/* ── Custom Properties ── */
+:root {
+  --color-surface: oklch(0.97 0.005 90);
+  --color-bg: oklch(0.99 0.003 90);
+  --color-border: oklch(0.9 0.008 85);
+  --color-text: oklch(0.15 0.01 90);
+  --color-text-muted: oklch(0.55 0.015 90);
+  --color-accent: oklch(0.55 0.18 145);
+  --color-accent-hover: oklch(0.5 0.18 145);
+  --color-checked: oklch(0.6 0.18 145);
+  --color-danger: oklch(0.55 0.18 30);
+  --color-danger-hover: oklch(0.5 0.18 30);
+
+  --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  --ease-out: cubic-bezier(0.25, 1, 0.5, 1);
+  --transition-fast: 150ms var(--ease-out);
+  --transition-normal: 200ms var(--ease-out);
+
+  --max-width: 640px;
+}
+
+/* ── Reset ── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-stack);
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+ul {
+  list-style: none;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+input {
+  font: inherit;
+  color: inherit;
+}
+
+/* ── App Container ── */
+.app {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: var(--space-lg) var(--space-lg) var(--space-2xl);
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+/* ── Error Banner ── */
+.error-banner {
+  background: oklch(0.55 0.18 30 / 0.1);
+  color: oklch(0.4 0.18 30);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: var(--space-md);
+  border: 1px solid oklch(0.55 0.18 30 / 0.2);
+}
+
+/* ── Header ── */
+.app-header {
+  padding: var(--space-xl) 0 var(--space-lg);
+}
+
+.app-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+/* ── Add Form ── */
+.add-form {
+  margin-bottom: var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.add-row {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.add-input {
+  flex: 1;
+  height: 48px;
+  padding: 0 var(--space-lg);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  background: var(--color-surface);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  outline: none;
+  min-width: 0;
+}
+
+.add-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px oklch(0.55 0.18 145 / 0.15);
+}
+
+.add-input::placeholder {
+  color: var(--color-text-muted);
+  opacity: 1;
+}
+
+.add-btn {
+  height: 48px;
+  padding: 0 var(--space-xl);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+  white-space: nowrap;
+  transition: background var(--transition-fast), opacity var(--transition-fast);
+  touch-action: manipulation;
+}
+
+.add-btn:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.add-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.add-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.add-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.add-details {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.detail-input {
+  flex: 1;
+  height: 40px;
+  padding: 0 var(--space-md);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  background: var(--color-surface);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  outline: none;
+  min-width: 0;
+}
+
+.detail-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px oklch(0.55 0.18 145 / 0.15);
+}
+
+.detail-input::placeholder {
+  color: var(--color-text-muted);
+  opacity: 1;
+}
+
+/* ── Sections ── */
+.list-section {
+  margin-bottom: var(--space-lg);
+}
+
+.section-heading {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  padding: var(--space-md) 0;
+}
+
+.section-heading-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-border);
+  transition: color var(--transition-fast);
+}
+
+.section-heading-btn:hover {
+  color: var(--color-text);
+}
+
+.section-heading-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.chevron {
+  font-size: 0.75rem;
+  transition: transform var(--transition-normal);
+  display: inline-block;
+}
+
+.chevron-up {
+  transform: rotate(90deg);
+}
+
+/* ── Empty State ── */
+.empty-state {
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+  padding: var(--space-xl) 0;
+  text-align: center;
+}
+
+/* ── Item List ── */
+.item-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) 0;
+  border-bottom: 1px solid var(--color-border);
+  transition: opacity var(--transition-normal);
+  animation: item-enter var(--transition-normal) var(--ease-out);
+}
+
+@keyframes item-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.item-checked {
+  opacity: 0.5;
+}
+
+.item-checked .item-name {
+  text-decoration: line-through;
+  color: var(--color-text-muted);
+}
+
+/* ── Checkbox ── */
+.check-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+  border-radius: var(--radius-sm);
+}
+
+.check-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.check-box {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--color-border);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: transparent;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.check-box-done {
+  background: var(--color-checked);
+  border-color: var(--color-checked);
+  color: #fff;
+}
+
+.check-btn:hover .check-box {
+  border-color: var(--color-accent);
+}
+
+/* ── Item Content ── */
+.item-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-sm) 0;
+}
+
+.item-name {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.item-meta {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.meta-sep {
+  color: var(--color-border);
+}
+
+/* ── Delete Button ── */
+.delete-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  font-size: 1.25rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast), background var(--transition-fast);
+  touch-action: manipulation;
+}
+
+.delete-btn:hover {
+  color: var(--color-danger);
+  background: oklch(0.55 0.18 30 / 0.08);
+}
+
+.delete-btn:focus-visible {
+  outline: 2px solid var(--color-danger);
+  outline-offset: 2px;
+}
+
+.delete-btn:active {
+  color: var(--color-danger-hover);
+}
+
+/* ── Purchased List ── */
+.purchased-list .item-row:last-child {
+  border-bottom: none;
+}
+
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Responsive ── */
+@media (min-width: 640px) {
+  .app {
+    padding: var(--space-2xl) var(--space-xl) var(--space-2xl);
+  }
+
+  .app-title {
+    font-size: 1.75rem;
+  }
+
+  .add-details {
+    gap: var(--space-md);
+  }
+}
+
+@media (min-width: 768px) {
+  .app {
+    padding: var(--space-2xl) var(--space-xl);
+  }
+}
