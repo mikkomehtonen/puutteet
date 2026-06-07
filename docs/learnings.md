@@ -37,3 +37,11 @@
 **Area**: testing
 **What happened**: Acceptance criteria required verifying responsive behavior (44px touch targets, overflow-x hidden) but no browser testing framework was available.
 **Takeaway**: When acceptance criteria require visual/CSS properties, test by reading the CSS source file and asserting expected rules exist via string/RegExp matching. This validates intent when computed-style testing isn't feasible.
+
+---
+
+## Docker test setup must be scoped inside describe blocks that require it
+**Date**: 2026-06-07
+**Area**: testing
+**What happened**: A top-level `beforeAll` that built a Docker image ran before `.dockerignore` content tests (Task 1), causing false failures when `docker build` failed. Non-Docker tests in the same file were needlessly coupled to Docker infrastructure.
+**Takeaway**: When mixing Docker-dependent and Docker-independent tests in the same file, wrap the Docker image build/cleanup setup inside a parent `describe.skipIf(!dockerAvailable)()` block. Tests that don't need Docker (e.g., file-content assertions) stay at the top level outside that block. Use `describe.skipIf` to gate all container/inspect/run operations so the suite gracefully degrades when Docker is not installed.

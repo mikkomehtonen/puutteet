@@ -1,0 +1,14 @@
+.git
+node_modules
+data
+dist
+.env
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.tsbuildinfo
+.opencode
+docs
+stories
+tests
