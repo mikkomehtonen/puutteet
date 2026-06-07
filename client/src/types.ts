@@ -14,3 +14,8 @@ export interface CreateItemInput {
   quantity?: string;
   note?: string;
 }
+
+export type WsMessage =
+  | { type: 'item_created'; item: Item }
+  | { type: 'item_updated'; item: Item }
+  | { type: 'item_deleted'; id: number };

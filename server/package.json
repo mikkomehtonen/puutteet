@@ -11,8 +11,10 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@types/ws": "^8.5.14",
     "better-sqlite3": "^12.10.0",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

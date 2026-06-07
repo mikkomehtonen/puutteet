@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { getDb } from './db.js';
 import type { Item, CreateItemInput, UpdateItemInput, CheckedInput } from './types.js';
+import { broadcast } from './ws.js';
 
 const router = Router();
 
@@ -58,6 +59,7 @@ router.post('/items', (req: Request, res: Response) => {
   );
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(result.lastInsertRowid) as Item;
   res.status(201).json(item);
+  broadcast({ type: 'item_created', item });
 });
 
 // PATCH /api/items/:id — updates item fields
@@ -120,6 +122,7 @@ router.patch('/items/:id', (req: Request, res: Response) => {
 
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as Item;
   res.json(item);
+  broadcast({ type: 'item_updated', item });
 });
 
 // PATCH /api/items/:id/checked — toggles purchased status
@@ -152,6 +155,7 @@ router.patch('/items/:id/checked', (req: Request, res: Response) => {
 
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as Item;
   res.json(item);
+  broadcast({ type: 'item_updated', item });
 });
 
 // DELETE /api/items/:id — deletes an item
@@ -172,6 +176,7 @@ router.delete('/items/:id', (req: Request, res: Response) => {
   }
 
   res.status(204).send();
+  broadcast({ type: 'item_deleted', id });
 });
 
 export default router;

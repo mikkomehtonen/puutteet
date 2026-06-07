@@ -1,10 +1,22 @@
-import { useState, useEffect, useRef, type FormEvent } from 'react';
-import type { Item, CreateItemInput } from './types';
+import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
+import type { Item, CreateItemInput, WsMessage } from './types';
 import { fetchItems, createItem, toggleChecked, deleteItem } from './api';
+import { useWebSocket } from './useWebSocket';
 import './App.css';
 
 function errToMsg(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
+}
+
+// Shared dedup logic: if an item with the same id exists, replace it; otherwise prepend.
+// This handles the case where a WS broadcast arrives before the HTTP response
+// (or vice versa) — the second arrival replaces rather than duplicates.
+function upsertItem(items: Item[], incoming: Item): Item[] {
+  const exists = items.some((i) => i.id === incoming.id);
+  if (exists) {
+    return items.map((i) => (i.id === incoming.id ? incoming : i));
+  }
+  return [incoming, ...items];
 }
 
 function App() {
@@ -18,11 +30,30 @@ function App() {
   const submittingRef = useRef(false);
   const pendingToggleIds = useRef(new Set<number>());
 
-  useEffect(() => {
-    fetchItems()
-      .then(setItems)
-      .catch((err) => setError(errToMsg(err, 'Failed to load items')));
+  const loadItems = useCallback(async () => {
+    try {
+      const data = await fetchItems();
+      setItems(data);
+    } catch (err) {
+      setError(errToMsg(err, 'Failed to load items'));
+    }
   }, []);
+
+  // Handle incoming WebSocket messages — reconcile state directly.
+  // Uses functional updates so every message is processed regardless of render timing.
+  const handleWsMessage = useCallback((msg: WsMessage) => {
+    if (msg.type === 'item_created' || msg.type === 'item_updated') {
+      setItems((prev) => upsertItem(prev, msg.item));
+    } else if (msg.type === 'item_deleted') {
+      setItems((prev) => prev.filter((i) => i.id !== msg.id));
+    }
+  }, []);
+
+  const { connected } = useWebSocket(loadItems, handleWsMessage);
+
+  useEffect(() => {
+    loadItems();
+  }, [loadItems]);
 
   const activeItems = items.filter((i) => !i.checked);
   const purchasedItems = items.filter((i) => i.checked);
@@ -38,7 +69,8 @@ function App() {
     if (note.trim()) input.note = note.trim();
     try {
       const item = await createItem(input);
-      setItems((prev) => [item, ...prev]);
+      // Use dedup to handle the case where the WS broadcast arrives before the HTTP response
+      setItems((prev) => upsertItem(prev, item));
       setName('');
       setQuantity('');
       setNote('');
@@ -92,6 +124,10 @@ function App() {
     <div className="app">
       <header className="app-header">
         <h1 className="app-title">Shopping List</h1>
+        <span
+          className={`sync-dot ${connected ? 'sync-dot--connected' : 'sync-dot--disconnected'}`}
+          aria-label={connected ? 'Connected' : 'Disconnected'}
+        />
       </header>
 
       {error && (

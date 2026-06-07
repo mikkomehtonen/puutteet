@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getDb, closeDb } from './db.js';
 import itemsRouter from './items.js';
+import { initWebSocketServer } from './ws.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -31,9 +32,10 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 // Start server
 try {
   getDb(); // Ensure database is initialized
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+  initWebSocketServer(server);
 } catch (err) {
   console.error('Failed to start server:', err);
   process.exit(1);

@@ -274,4 +274,11 @@ describe('Task 7 — Documentation and configuration', () => {
     expect(gitignore).toContain('.env');
     expect(gitignore).toContain('dist/');
   });
+
+  it('AC: Vite config proxies /ws to Express server with ws: true', () => {
+    const config = readFileSync(path.join(ROOT, 'client', 'vite.config.ts'), 'utf-8');
+    expect(config).toContain("'/ws'");
+    expect(config).toContain("target: 'http://localhost:3000'");
+    expect(config).toContain('ws: true');
+  });
 });

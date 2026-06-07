@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../App';
 
@@ -11,8 +11,26 @@ vi.mock('../api', () => ({
   deleteItem: vi.fn(),
 }));
 
+// Mock useWebSocket to control connection state and simulate messages
+// Using `var` because vi.mock factory is hoisted and cannot access let/const in TDZ
+var mockWsConnected = false;
+var mockWsOnMessage: ((msg: any) => void) | null = null;
+vi.mock('../useWebSocket', () => ({
+  useWebSocket: vi.fn((_fetch: () => Promise<void>, onMessage?: (msg: any) => void) => {
+    mockWsOnMessage = onMessage || null;
+    return { connected: mockWsConnected };
+  }),
+}));
+
 import { fetchItems, createItem, toggleChecked, deleteItem } from '../api';
 import type { Item } from '../types';
+
+// Helper to simulate a WebSocket message through the captured callback
+function simulateWsMessage(msg: any) {
+  act(() => {
+    mockWsOnMessage?.(msg);
+  });
+}
 
 const mockItem = (overrides: Partial<Item> = {}): Item => ({
   id: 1,
@@ -30,6 +48,7 @@ describe('Task 4 — Add and display items', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(fetchItems).mockResolvedValue([]);
+    mockWsConnected = false;
   });
 
   it('AC1: type in input + Enter adds item and shows in active list', async () => {
@@ -127,7 +146,6 @@ describe('Task 4 — Add and display items', () => {
   });
 
   it('AC7: active items displayed in the order returned by the API (server applies reverse chronological)', async () => {
-    // The API returns active items newest-first. Mock that order.
     const older = mockItem({ id: 1, name: 'First', created_at: '2024-01-01T00:00:00.000Z' });
     const newer = mockItem({ id: 2, name: 'Second', created_at: '2024-01-02T00:00:00.000Z' });
     vi.mocked(fetchItems).mockResolvedValue([newer, older]);
@@ -145,6 +163,7 @@ describe('Task 4 — Add and display items', () => {
 describe('Task 5 — Check and delete items', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockWsConnected = false;
   });
 
   it('AC1,AC2: checking an item moves to purchased with strikethrough', async () => {
@@ -224,7 +243,6 @@ describe('Task 5 — Check and delete items', () => {
       expect(screen.queryByText('Butter')).not.toBeInTheDocument();
     });
     expect(deleteItem).toHaveBeenCalledWith(1);
-    // No confirmation dialog (AC8) — nothing to assert, the point is no dialog appeared
   });
 
   it('AC9: purchased section is hidden when no purchased items exist', async () => {
@@ -288,6 +306,7 @@ describe('Error handling', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(fetchItems).mockResolvedValue([]);
+    mockWsConnected = false;
   });
 
   it('shows error banner when API call fails', async () => {
@@ -303,5 +322,159 @@ describe('Error handling', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('Network error');
     });
+  });
+});
+
+describe('WebSocket — state reconciliation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(fetchItems).mockResolvedValue([]);
+    mockWsConnected = true;
+  });
+
+  it('item_created: prepends new item when id does not exist', async () => {
+    const item = mockItem({ id: 1, name: 'Milk' });
+
+    render(<App />);
+
+    // Simulate a WebSocket message
+    simulateWsMessage({ type: 'item_created', item });
+
+    await waitFor(() => {
+      expect(screen.getByText('Milk')).toBeInTheDocument();
+    });
+  });
+
+  it('item_created: replaces existing item with same id (dedup)', async () => {
+    const existing = mockItem({ id: 1, name: 'Original' });
+    const updated = mockItem({ id: 1, name: 'Updated' });
+    vi.mocked(fetchItems).mockResolvedValue([existing]);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Original')).toBeInTheDocument();
+    });
+
+    // Simulate a WS message with same id — should replace
+    simulateWsMessage({ type: 'item_created', item: updated });
+
+    await waitFor(() => {
+      expect(screen.getByText('Updated')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Original')).not.toBeInTheDocument();
+  });
+
+  it('item_updated: replaces existing item in the list', async () => {
+    const existing = mockItem({ id: 1, name: 'Bread' });
+    const updated = mockItem({ id: 1, name: 'Sourdough Bread' });
+    vi.mocked(fetchItems).mockResolvedValue([existing]);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+    });
+
+    simulateWsMessage({ type: 'item_updated', item: updated });
+
+    await waitFor(() => {
+      expect(screen.getByText('Sourdough Bread')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Bread')).not.toBeInTheDocument();
+  });
+
+  it('item_updated: prepends item if not found in state', async () => {
+    const item = mockItem({ id: 99, name: 'New Item' });
+
+    render(<App />);
+
+    simulateWsMessage({ type: 'item_updated', item });
+
+    await waitFor(() => {
+      expect(screen.getByText('New Item')).toBeInTheDocument();
+    });
+  });
+
+  it('item_deleted: removes item from the list', async () => {
+    const item = mockItem({ id: 1, name: 'Butter' });
+    vi.mocked(fetchItems).mockResolvedValue([item]);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Butter')).toBeInTheDocument();
+    });
+
+    simulateWsMessage({ type: 'item_deleted', id: 1 });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Butter')).not.toBeInTheDocument();
+    });
+  });
+
+  it('item_updated with checked change moves item between sections', async () => {
+    const item = mockItem({ id: 1, name: 'Apples', checked: 0 });
+    vi.mocked(fetchItems).mockResolvedValue([item]);
+
+    render(<App />);
+
+    // Item starts in active list
+    await waitFor(() => {
+      expect(screen.getByText('Apples')).toBeInTheDocument();
+      const itemRow = screen.getByText('Apples').closest('li');
+      expect(itemRow?.className).not.toContain('item-checked');
+    });
+
+    // Simulate WS message checking the item
+    simulateWsMessage({ type: 'item_updated', item: { ...item, checked: 1, checked_at: new Date().toISOString() } });
+
+    // Open the purchased section to see the checked item
+    await waitFor(() => {
+      const purchasedBtn = screen.getByText(/purchased/i);
+      fireEvent.click(purchasedBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Apples')).toBeInTheDocument();
+      const itemRow = screen.getByText('Apples').closest('li');
+      expect(itemRow?.className).toContain('item-checked');
+    });
+  });
+
+  it('sync dot shows green when connected', () => {
+    mockWsConnected = true;
+
+    render(<App />);
+
+    const dot = screen.getByLabelText('Connected');
+    expect(dot).toBeInTheDocument();
+    expect(dot.className).toContain('sync-dot--connected');
+  });
+
+  it('sync dot shows red when disconnected', () => {
+    mockWsConnected = false;
+
+    render(<App />);
+
+    const dot = screen.getByLabelText('Disconnected');
+    expect(dot).toBeInTheDocument();
+    expect(dot.className).toContain('sync-dot--disconnected');
+  });
+
+  it('sync dot transitions from red to green on reconnect', () => {
+    mockWsConnected = false;
+
+    const { rerender } = render(<App />);
+
+    let dot = screen.getByLabelText('Disconnected');
+    expect(dot.className).toContain('sync-dot--disconnected');
+
+    // Simulate reconnect
+    mockWsConnected = true;
+    rerender(<App />);
+
+    dot = screen.getByLabelText('Connected');
+    expect(dot.className).toContain('sync-dot--connected');
   });
 });

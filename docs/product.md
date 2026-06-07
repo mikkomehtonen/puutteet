@@ -6,6 +6,7 @@ Puutteet (Finnish for "shortages" or "things missing") is a self-hosted shopping
 
 - **Shopping List** — add, check off, restore, and delete shopping items with a mobile-first UI ([story](stories/001-shopping-list-app/story.md))
 - **Docker Support** — Dockerfile and .dockerignore for building and running the app in a container ([story](stories/002-docker-support/story.md))
+- **Real-Time Sync** — WebSocket-based push so all connected tabs and devices see changes immediately without reloading ([story](stories/003-realtime-sync/story.md))
 
 ## Non-Goals
 
