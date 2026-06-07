@@ -1,4 +1,4 @@
-import type { Item, CreateItemInput } from './types';
+import type { Item, CreateItemInput, UpdateItemInput } from './types';
 
 const BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -45,4 +45,13 @@ export async function deleteItem(id: number): Promise<void> {
     method: 'DELETE',
   });
   return handleEmptyOrThrow(res);
+}
+
+export async function updateItem(id: number, input: UpdateItemInput): Promise<Item> {
+  const res = await fetch(`${BASE_URL}/api/items/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  return handleJsonOrThrow<Item>(res);
 }

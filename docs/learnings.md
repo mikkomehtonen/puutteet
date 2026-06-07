@@ -45,3 +45,19 @@
 **Area**: testing
 **What happened**: A top-level `beforeAll` that built a Docker image ran before `.dockerignore` content tests (Task 1), causing false failures when `docker build` failed. Non-Docker tests in the same file were needlessly coupled to Docker infrastructure.
 **Takeaway**: When mixing Docker-dependent and Docker-independent tests in the same file, wrap the Docker image build/cleanup setup inside a parent `describe.skipIf(!dockerAvailable)()` block. Tests that don't need Docker (e.g., file-content assertions) stay at the top level outside that block. Use `describe.skipIf` to gate all container/inspect/run operations so the suite gracefully degrades when Docker is not installed.
+
+---
+
+## WebSocket sync useEffect must skip when component is in edit mode
+**Date**: 2026-06-07
+**Area**: architecture
+**What happened**: ItemRow's `useEffect` synced local edit form state from props whenever `item.name/quantity/note` changed. A WebSocket `item_updated` message for the same item silently overwrote the user's in-progress edits, causing data loss.
+**Takeaway**: In `ItemRow`, the sync `useEffect` must check `if (editing) return` and include `editing` in the dependency array. This prevents external state changes (WS broadcast from another client) from overwriting local edits. The `editing` ref/state must be part of the effect's dependency list.
+
+---
+
+## Async form submission needs a ref guard, not just state
+**Date**: 2026-06-07
+**Area**: architecture
+**What happened**: The edit form's `saveEdit` used `saving` (React state) as a guard against double-submits. Because state updates are asynchronous, rapid double-clicks or double-Enter could bypass the guard and fire two PATCH requests. The add-item flow already used `submittingRef` for this pattern.
+**Takeaway**: Use a `useRef` guard (e.g., `savingRef.current`) alongside state for async form operations. The ref provides synchronous truth — `if (savingRef.current) return` blocks immediately. Mirror the add-item pattern: `submittingRef` for create, `savingRef` for edit.

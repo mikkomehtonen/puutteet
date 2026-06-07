@@ -9,6 +9,7 @@ vi.mock('../api', () => ({
   createItem: vi.fn(),
   toggleChecked: vi.fn(),
   deleteItem: vi.fn(),
+  updateItem: vi.fn(),
 }));
 
 // Mock useWebSocket to control connection state and simulate messages
@@ -22,7 +23,7 @@ vi.mock('../useWebSocket', () => ({
   }),
 }));
 
-import { fetchItems, createItem, toggleChecked, deleteItem } from '../api';
+import { fetchItems, createItem, toggleChecked, deleteItem, updateItem } from '../api';
 import type { Item } from '../types';
 
 // Helper to simulate a WebSocket message through the captured callback
@@ -476,5 +477,431 @@ describe('WebSocket — state reconciliation', () => {
 
     dot = screen.getByLabelText('Connected');
     expect(dot.className).toContain('sync-dot--connected');
+  });
+});
+
+describe('Task 3 — Edit button on active items', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWsConnected = false;
+  });
+
+  it('AC1: active item shows edit button with aria-label', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Bread' })]);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+    });
+
+    const editBtn = screen.getByRole('button', { name: /edit bread/i });
+    expect(editBtn).toBeInTheDocument();
+  });
+
+  it('AC2: edit button has minimum 44x44 touch target', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Bread' })]);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+    });
+
+    const editBtn = screen.getByRole('button', { name: /edit bread/i });
+    // CSS .edit-btn sets width: 44px; height: 44px
+    expect(editBtn).toHaveClass('edit-btn');
+    const style = window.getComputedStyle(editBtn);
+    expect(style.width).toBe('44px');
+    expect(style.height).toBe('44px');
+  });
+
+  it('AC3: purchased item does not show edit button', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([
+      mockItem({ id: 1, name: 'Milk', checked: 1, checked_at: new Date().toISOString() }),
+    ]);
+
+    render(<App />);
+
+    await waitFor(() => {
+      // Open purchased section
+      const purchasedBtn = screen.getByText(/purchased/i);
+      fireEvent.click(purchasedBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Milk')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole('button', { name: /edit milk/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('Task 4 — Inline edit mode', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Bread', quantity: '2 loaves', note: 'sourdough' })]);
+    mockWsConnected = false;
+  });
+
+  it('AC1: tap edit button switches to edit mode with pre-filled inputs', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+    });
+
+    const editBtn = screen.getByRole('button', { name: /edit bread/i });
+    await user.click(editBtn);
+
+    // Edit mode inputs are visible
+    await waitFor(() => {
+      const nameInput = screen.getByLabelText('Edit item name');
+      expect(nameInput).toHaveValue('Bread');
+    });
+
+    const qtyInput = screen.getByLabelText('Edit quantity');
+    expect(qtyInput).toHaveValue('2 loaves');
+
+    const noteInput = screen.getByLabelText('Edit note');
+    expect(noteInput).toHaveValue('sourdough');
+
+    // Save and Cancel buttons appear
+    expect(screen.getByRole('button', { name: /save changes/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancel editing/i })).toBeInTheDocument();
+  });
+
+  it('AC2: checkbox and delete button are hidden during editing', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+    });
+
+    const editBtn = screen.getByRole('button', { name: /edit bread/i });
+    await user.click(editBtn);
+
+    await waitFor(() => {
+      const nameInput = screen.getByLabelText('Edit item name');
+      expect(nameInput).toHaveValue('Bread');
+    });
+
+    // Checkbox and delete button should not be visible
+    expect(screen.queryByRole('button', { name: /mark as purchased/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /delete bread/i })).not.toBeInTheDocument();
+  });
+
+  it('AC3: modify name and save calls updateItem', async () => {
+    const user = userEvent.setup();
+    const updatedItem = mockItem({ id: 1, name: 'Sourdough Bread', quantity: '2 loaves', note: 'sourdough' });
+    vi.mocked(updateItem).mockResolvedValue(updatedItem);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+    });
+
+    const editBtn = screen.getByRole('button', { name: /edit bread/i });
+    await user.click(editBtn);
+
+    await waitFor(() => {
+      const nameInput = screen.getByLabelText('Edit item name');
+      expect(nameInput).toHaveValue('Bread');
+    });
+
+    const nameInput = screen.getByLabelText('Edit item name') as HTMLInputElement;
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Sourdough Bread');
+
+    const saveBtn = screen.getByRole('button', { name: /save changes/i });
+    await user.click(saveBtn);
+
+    await waitFor(() => {
+      expect(updateItem).toHaveBeenCalledWith(1, {
+        name: 'Sourdough Bread',
+        quantity: '2 loaves',
+        note: 'sourdough',
+      });
+    });
+  });
+
+  it('AC4: save returns to display mode showing updated name', async () => {
+    const user = userEvent.setup();
+    const updatedItem = mockItem({ id: 1, name: 'Sourdough Bread', quantity: '2 loaves', note: 'sourdough' });
+    vi.mocked(updateItem).mockResolvedValue(updatedItem);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+    });
+
+    const editBtn = screen.getByRole('button', { name: /edit bread/i });
+    await user.click(editBtn);
+
+    await waitFor(() => {
+      const nameInput = screen.getByLabelText('Edit item name');
+      expect(nameInput).toHaveValue('Bread');
+    });
+
+    const nameInput = screen.getByLabelText('Edit item name') as HTMLInputElement;
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Sourdough Bread');
+
+    const saveBtn = screen.getByRole('button', { name: /save changes/i });
+    await user.click(saveBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Sourdough Bread')).toBeInTheDocument();
+    });
+
+    // Back in display mode
+    expect(screen.queryByLabelText('Edit item name')).not.toBeInTheDocument();
+  });
+
+  it('AC5: Enter key in name input saves', async () => {
+    const user = userEvent.setup();
+    const updatedItem = mockItem({ id: 1, name: 'Sourdough Bread', quantity: '2 loaves', note: 'sourdough' });
+    vi.mocked(updateItem).mockResolvedValue(updatedItem);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+    });
+
+    const editBtn = screen.getByRole('button', { name: /edit bread/i });
+    await user.click(editBtn);
+
+    await waitFor(() => {
+      const nameInput = screen.getByLabelText('Edit item name');
+      expect(nameInput).toHaveValue('Bread');
+    });
+
+    const nameInput = screen.getByLabelText('Edit item name') as HTMLInputElement;
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Sourdough Bread{Enter}');
+
+    await waitFor(() => {
+      expect(updateItem).toHaveBeenCalled();
+    });
+  });
+
+  it('AC6: Cancel returns to display mode with original values', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+    });
+
+    const editBtn = screen.getByRole('button', { name: /edit bread/i });
+    await user.click(editBtn);
+
+    await waitFor(() => {
+      const nameInput = screen.getByLabelText('Edit item name');
+      expect(nameInput).toHaveValue('Bread');
+    });
+
+    const nameInput = screen.getByLabelText('Edit item name') as HTMLInputElement;
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Something Different');
+
+    const cancelBtn = screen.getByRole('button', { name: /cancel editing/i });
+    await user.click(cancelBtn);
+
+    // Back to display mode with original name
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+    });
+
+    expect(updateItem).not.toHaveBeenCalled();
+  });
+
+  it('AC7: Escape key cancels editing', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+    });
+
+    const editBtn = screen.getByRole('button', { name: /edit bread/i });
+    await user.click(editBtn);
+
+    await waitFor(() => {
+      const nameInput = screen.getByLabelText('Edit item name');
+      expect(nameInput).toHaveValue('Bread');
+    });
+
+    const nameInput = screen.getByLabelText('Edit item name');
+    await user.type(nameInput, '{Escape}');
+
+    // Back to display mode
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByLabelText('Edit item name')).not.toBeInTheDocument();
+    expect(updateItem).not.toHaveBeenCalled();
+  });
+
+  it('AC8: clearing name disables save button', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+    });
+
+    const editBtn = screen.getByRole('button', { name: /edit bread/i });
+    await user.click(editBtn);
+
+    await waitFor(() => {
+      const nameInput = screen.getByLabelText('Edit item name');
+      expect(nameInput).toHaveValue('Bread');
+    });
+
+    const nameInput = screen.getByLabelText('Edit item name') as HTMLInputElement;
+    await user.clear(nameInput);
+
+    const saveBtn = screen.getByRole('button', { name: /save changes/i });
+    expect(saveBtn).toBeDisabled();
+  });
+
+  it('AC9: save shows Saving text and disables buttons while in flight', async () => {
+    const user = userEvent.setup();
+    // Simulate a slow request
+    let resolve: () => void;
+    vi.mocked(updateItem).mockReturnValue(new Promise((r) => {
+      resolve = () => r(mockItem({ id: 1, name: 'New Name' }));
+    }));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+    });
+
+    const editBtn = screen.getByRole('button', { name: /edit bread/i });
+    await user.click(editBtn);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Edit item name')).toHaveValue('Bread');
+    });
+
+    const saveBtn = screen.getByRole('button', { name: /save changes/i });
+    await user.click(saveBtn);
+
+    await waitFor(() => {
+      expect(saveBtn).toHaveTextContent('Saving…');
+      expect(saveBtn).toBeDisabled();
+    });
+
+    const cancelBtn = screen.getByRole('button', { name: /cancel editing/i });
+    expect(cancelBtn).toBeDisabled();
+
+    // Resolve the promise
+    resolve!();
+  });
+
+  it('AC10: save failure shows error banner and keeps edit mode open', async () => {
+    const user = userEvent.setup();
+    vi.mocked(updateItem).mockRejectedValue(new Error('Server error'));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+    });
+
+    const editBtn = screen.getByRole('button', { name: /edit bread/i });
+    await user.click(editBtn);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Edit item name')).toHaveValue('Bread');
+    });
+
+    const nameInput = screen.getByLabelText('Edit item name') as HTMLInputElement;
+    await user.clear(nameInput);
+    await user.type(nameInput, 'New Name');
+
+    const saveBtn = screen.getByRole('button', { name: /save changes/i });
+    await user.click(saveBtn);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Server error');
+    });
+
+    // Edit mode stays open with current values preserved
+    await waitFor(() => {
+      expect(screen.getByLabelText('Edit item name')).toHaveValue('New Name');
+    });
+  });
+});
+
+describe('Task 5 — WebSocket reconciliation for edits', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWsConnected = true;
+  });
+
+  it('AC1: WS item_updated for a different item does not disrupt active edit', async () => {
+    const item1 = mockItem({ id: 1, name: 'Bread' });
+    const item2 = mockItem({ id: 2, name: 'Milk' });
+    vi.mocked(fetchItems).mockResolvedValue([item1, item2]);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+      expect(screen.getByText('Milk')).toBeInTheDocument();
+    });
+
+    // Start editing item 1
+    const editBtn = screen.getByRole('button', { name: /edit bread/i });
+    await userEvent.click(editBtn);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Edit item name')).toHaveValue('Bread');
+    });
+
+    // Simulate WS update for item 2
+    simulateWsMessage({ type: 'item_updated', item: { ...item2, name: 'Almond Milk' } });
+
+    // Item 2 is updated in the list
+    await waitFor(() => {
+      expect(screen.getByText('Almond Milk')).toBeInTheDocument();
+    });
+
+    // Edit mode for item 1 is still active
+    expect(screen.getByLabelText('Edit item name')).toHaveValue('Bread');
+  });
+
+  it('AC2: WS item_updated for the same item reconciles via upsertItem', async () => {
+    const item1 = mockItem({ id: 1, name: 'Bread' });
+    vi.mocked(fetchItems).mockResolvedValue([item1]);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument();
+    });
+
+    // Simulate WS update for the same item (e.g., from another client)
+    simulateWsMessage({ type: 'item_updated', item: { ...item1, name: 'Sourdough Bread' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('Sourdough Bread')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Bread')).not.toBeInTheDocument();
   });
 });

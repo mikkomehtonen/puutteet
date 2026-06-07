@@ -62,11 +62,24 @@ router.post('/items', (req: Request, res: Response) => {
   broadcast({ type: 'item_created', item });
 });
 
-// PATCH /api/items/:id — updates item fields
+// PATCH /api/items/:id — updates item fields (active items only)
 router.patch('/items/:id', (req: Request, res: Response) => {
   const id = parseItemId(req.params.id);
   if (id === null) {
     res.status(400).json({ error: 'Invalid item ID' });
+    return;
+  }
+
+  const db = getDb();
+  const existing = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as Item | undefined;
+
+  if (!existing) {
+    res.status(404).json({ error: 'Item not found' });
+    return;
+  }
+
+  if (existing.checked === 1) {
+    res.status(403).json({ error: 'Cannot edit a purchased item' });
     return;
   }
 
@@ -111,7 +124,6 @@ router.patch('/items/:id', (req: Request, res: Response) => {
   values.push(now);
   values.push(id);
 
-  const db = getDb();
   const stmt = db.prepare(`UPDATE items SET ${fields.join(', ')} WHERE id = ?`);
   const result = stmt.run(...values);
 

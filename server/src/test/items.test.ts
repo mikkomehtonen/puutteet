@@ -158,6 +158,62 @@ describe('Items API', () => {
       expect(res.status).toBe(404);
     });
 
+    // Task 1: reject edits on purchased items
+    it('PATCH /api/items/:id - returns 403 for checked (purchased) item', async () => {
+      const createRes = await request(app)
+        .post('/api/items')
+        .send({ name: 'Bread' })
+        .set('Content-Type', 'application/json');
+      const id = createRes.body.id;
+
+      // Mark as purchased
+      await request(app)
+        .patch(`/api/items/${id}/checked`)
+        .send({ checked: true })
+        .set('Content-Type', 'application/json');
+
+      // Try to edit the purchased item
+      const res = await request(app)
+        .patch(`/api/items/${id}`)
+        .send({ name: 'New Name' })
+        .set('Content-Type', 'application/json');
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Cannot edit a purchased item');
+    });
+
+    it('PATCH /api/items/:id - 403 does not modify the item', async () => {
+      const createRes = await request(app)
+        .post('/api/items')
+        .send({ name: 'Bread' })
+        .set('Content-Type', 'application/json');
+      const id = createRes.body.id;
+
+      // Mark as purchased
+      await request(app)
+        .patch(`/api/items/${id}/checked`)
+        .send({ checked: true })
+        .set('Content-Type', 'application/json');
+
+      // Try to edit
+      await request(app)
+        .patch(`/api/items/${id}`)
+        .send({ name: 'New Name' })
+        .set('Content-Type', 'application/json');
+
+      // Verify item is unchanged
+      const getRes = await request(app).get('/api/items');
+      const item = getRes.body.find((i: Item) => i.id === id);
+      expect(item.name).toBe('Bread');
+    });
+
+    it('PATCH /api/items/:id - 404 takes precedence over 403 for non-existent items', async () => {
+      const res = await request(app)
+        .patch('/api/items/9999')
+        .send({ name: 'X' })
+        .set('Content-Type', 'application/json');
+      expect(res.status).toBe(404);
+    });
+
     it('PATCH /api/items/:id/checked - returns 400 for non-boolean checked', async () => {
       const createRes = await request(app)
         .post('/api/items')

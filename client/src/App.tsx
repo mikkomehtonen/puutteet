@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
 import type { Item, CreateItemInput, WsMessage } from './types';
-import { fetchItems, createItem, toggleChecked, deleteItem } from './api';
+import { fetchItems, createItem, toggleChecked, deleteItem, updateItem as apiUpdateItem } from './api';
 import { useWebSocket } from './useWebSocket';
 import './App.css';
 
@@ -118,6 +118,17 @@ function App() {
     }
   };
 
+  const handleUpdate = async (item: Item, input: { name: string; quantity: string; note: string }) => {
+    setError(null);
+    try {
+      const updated = await apiUpdateItem(item.id, input);
+      setItems((prev) => upsertItem(prev, updated));
+    } catch (err) {
+      setError(errToMsg(err, 'Failed to update item'));
+      throw err;
+    }
+  };
+
   const canSubmit = name.trim().length > 0 && !submitting;
 
   return (
@@ -181,7 +192,7 @@ function App() {
         ) : (
           <ul className="item-list">
             {activeItems.map((item) => (
-              <ItemRow key={item.id} item={item} onToggle={handleToggle} onDelete={handleDelete} />
+              <ItemRow key={item.id} item={item} onToggle={handleToggle} onDelete={handleDelete} onUpdate={handleUpdate} />
             ))}
           </ul>
         )}
@@ -217,11 +228,133 @@ function ItemRow({
   item,
   onToggle,
   onDelete,
+  onUpdate,
 }: {
   item: Item;
   onToggle: (item: Item) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
+  onUpdate?: (item: Item, input: { name: string; quantity: string; note: string }) => Promise<void>;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState(item.name);
+  const [editQuantity, setEditQuantity] = useState(item.quantity);
+  const [editNote, setEditNote] = useState(item.note);
+  const [saving, setSaving] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const savingRef = useRef(false);
+
+  // Sync edit form when the item changes via WebSocket, but not while actively editing
+  useEffect(() => {
+    if (editing) return;
+    setEditName(item.name);
+    setEditQuantity(item.quantity);
+    setEditNote(item.note);
+  }, [item.name, item.quantity, item.note, editing]);
+
+  const startEdit = () => {
+    setEditName(item.name);
+    setEditQuantity(item.quantity);
+    setEditNote(item.note);
+    setEditing(true);
+    // Auto-focus name input
+    setTimeout(() => nameInputRef.current?.focus(), 0);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setSaving(false);
+  };
+
+  const saveEdit = async () => {
+    const trimmedName = editName.trim();
+    if (!trimmedName || savingRef.current) return;
+    setSaving(true);
+    savingRef.current = true;
+    try {
+      await onUpdate?.(item, {
+        name: trimmedName,
+        quantity: editQuantity.trim(),
+        note: editNote.trim(),
+      });
+      setEditing(false);
+    } catch {
+      // Error already handled by onUpdate (shows error banner)
+      // Keep edit mode open so user can retry
+    } finally {
+      setSaving(false);
+      savingRef.current = false;
+    }
+  };
+
+  const handleEditKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      saveEdit();
+    } else if (e.key === 'Escape') {
+      cancelEdit();
+    }
+  };
+
+  const canSave = editName.trim().length > 0 && !savingRef.current;
+
+  // Edit mode
+  if (editing) {
+    return (
+      <li className="item-row">
+        <div className="edit-form">
+          <input
+            ref={nameInputRef}
+            className="edit-input edit-input--name"
+            type="text"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onKeyDown={handleEditKeyDown}
+            aria-label="Edit item name"
+          />
+          <div className="edit-details">
+            <input
+              className="edit-input"
+              type="text"
+              placeholder="Quantity"
+              value={editQuantity}
+              onChange={(e) => setEditQuantity(e.target.value)}
+              onKeyDown={handleEditKeyDown}
+              aria-label="Edit quantity"
+            />
+            <input
+              className="edit-input"
+              type="text"
+              placeholder="Note"
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              onKeyDown={handleEditKeyDown}
+              aria-label="Edit note"
+            />
+          </div>
+          <div className="edit-actions">
+            <button
+              className="save-btn"
+              onClick={saveEdit}
+              disabled={!canSave}
+              aria-label="Save changes"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              className="cancel-btn"
+              onClick={cancelEdit}
+              disabled={saving}
+              aria-label="Cancel editing"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </li>
+    );
+  }
+
+  // Display mode
   return (
     <li className={`item-row ${item.checked ? 'item-checked' : ''}`}>
       <button
@@ -243,13 +376,24 @@ function ItemRow({
           </span>
         )}
       </div>
-      <button
-        className="delete-btn"
-        onClick={() => onDelete(item.id)}
-        aria-label={`Delete ${item.name}`}
-      >
-        ×
-      </button>
+      <div className="item-actions">
+        {!item.checked && (
+          <button
+            className="edit-btn"
+            onClick={startEdit}
+            aria-label={`Edit ${item.name}`}
+          >
+            ✎
+          </button>
+        )}
+        <button
+          className="delete-btn"
+          onClick={() => onDelete(item.id)}
+          aria-label={`Delete ${item.name}`}
+        >
+          ×
+        </button>
+      </div>
     </li>
   );
 }

@@ -15,6 +15,12 @@ export interface CreateItemInput {
   note?: string;
 }
 
+export interface UpdateItemInput {
+  name?: string;
+  quantity?: string;
+  note?: string;
+}
+
 export type WsMessage =
   | { type: 'item_created'; item: Item }
   | { type: 'item_updated'; item: Item }
