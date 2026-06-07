@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type FormEvent } from 'react';
 import type { Item, CreateItemInput, WsMessage } from './types';
 import { fetchItems, createItem, toggleChecked, deleteItem, updateItem as apiUpdateItem } from './api';
 import { useWebSocket } from './useWebSocket';
@@ -19,6 +19,91 @@ function upsertItem(items: Item[], incoming: Item): Item[] {
   return [incoming, ...items];
 }
 
+/**
+ * Generate autocomplete suggestions from existing items.
+ * Returns up to 5 unique names that start with the query (case-insensitive),
+ * excluding exact matches. Results are sorted alphabetically.
+ */
+export function getSuggestions(items: Item[], query: string): string[] {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  const lowerQuery = trimmed.toLowerCase();
+
+  // Collect unique names (case-insensitive dedup, first-encountered casing wins)
+  const seen = new Set<string>();
+  const uniqueNames: string[] = [];
+  for (const item of items) {
+    const lower = item.name.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      uniqueNames.push(item.name);
+    }
+  }
+
+  // Filter by prefix match, exclude exact matches
+  const matches = uniqueNames.filter((name) => {
+    const lower = name.toLowerCase();
+    // Must start with the query
+    if (!lower.startsWith(lowerQuery)) return false;
+    // Exclude exact match (case-insensitive)
+    if (lower === lowerQuery) return false;
+    return true;
+  });
+
+  // Sort alphabetically (case-insensitive), limit to 5
+  return matches
+    .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+    .slice(0, 5);
+}
+
+/**
+ * Renders a dropdown list of autocomplete suggestions.
+ * Each suggestion is a button with the matching prefix bolded.
+ */
+function SuggestionList({
+  suggestions,
+  activeIndex,
+  onSelect,
+  query,
+}: {
+  suggestions: string[];
+  activeIndex: number;
+  onSelect: (name: string) => void;
+  query: string;
+}) {
+  const lowerQuery = query.toLowerCase();
+
+  return (
+    <ul className="suggestions-dropdown" role="listbox">
+      {suggestions.map((suggestion, index) => {
+        const matchLen = lowerQuery.length;
+        const prefix = suggestion.slice(0, matchLen);
+        const rest = suggestion.slice(matchLen);
+        const isActive = index === activeIndex;
+
+        return (
+          <li
+            key={suggestion}
+            className={`suggestion-item${isActive ? ' suggestion-item--active' : ''}`}
+            role="option"
+            aria-selected={isActive}
+          >
+            <button
+              type="button"
+              className="suggestion-button"
+              onClick={() => onSelect(suggestion)}
+            >
+              {prefix && <span className="suggestion-match">{prefix}</span>}
+              {rest}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function App() {
   const [items, setItems] = useState<Item[]>([]);
   const [name, setName] = useState('');
@@ -27,8 +112,18 @@ function App() {
   const [purchasedOpen, setPurchasedOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const submittingRef = useRef(false);
   const pendingToggleIds = useRef(new Set<number>());
+  const addFormRef = useRef<HTMLDivElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // Derive suggestions from items and current name input
+  const suggestions = useMemo(
+    () => getSuggestions(items, name),
+    [items, name],
+  );
 
   const loadItems = useCallback(async () => {
     try {
@@ -54,6 +149,18 @@ function App() {
   useEffect(() => {
     loadItems();
   }, [loadItems]);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    if (!suggestionsOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (addFormRef.current && !addFormRef.current.contains(e.target as Node)) {
+        closeSuggestions();
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [suggestionsOpen]);
 
   const activeItems = items.filter((i) => !i.checked);
   const purchasedItems = items.filter((i) => i.checked);
@@ -92,6 +199,69 @@ function App() {
       e.preventDefault();
       submitNewItem();
     }
+  };
+
+  const handleNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' && suggestionsOpen && suggestions.length > 0) {
+      e.preventDefault();
+      setActiveSuggestionIndex((prev) => (prev + 1) % suggestions.length);
+      return;
+    }
+    if (e.key === 'ArrowUp' && suggestionsOpen && suggestions.length > 0) {
+      e.preventDefault();
+      setActiveSuggestionIndex((prev) =>
+        prev <= 0 ? suggestions.length - 1 : prev - 1,
+      );
+      return;
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      // If a suggestion is highlighted, select it instead of submitting
+      if (suggestionsOpen && activeSuggestionIndex >= 0 && activeSuggestionIndex < suggestions.length) {
+        setName(suggestions[activeSuggestionIndex]);
+        setSuggestionsOpen(false);
+        setActiveSuggestionIndex(-1);
+        return;
+      }
+      submitNewItem();
+    }
+    if (e.key === 'Escape' && suggestionsOpen) {
+      e.preventDefault();
+      setSuggestionsOpen(false);
+      setActiveSuggestionIndex(-1);
+    }
+  };
+
+  const handleSelectSuggestion = (selectedName: string) => {
+    setName(selectedName);
+    setSuggestionsOpen(false);
+    setActiveSuggestionIndex(-1);
+    // Refocus name input so user can immediately press Enter to submit
+    nameInputRef.current?.focus();
+  };
+
+  const closeSuggestions = () => {
+    setSuggestionsOpen(false);
+    setActiveSuggestionIndex(-1);
+  };
+
+  // Defer blur close so click on suggestion buttons can fire first
+  const handleNameBlur = () => {
+    setTimeout(() => {
+      setSuggestionsOpen(false);
+      setActiveSuggestionIndex(-1);
+    }, 0);
+  };
+
+  const handleNameChange = (value: string) => {
+    setName(value);
+    if (value.trim()) {
+      const matching = getSuggestions(items, value);
+      setSuggestionsOpen(matching.length > 0);
+    } else {
+      setSuggestionsOpen(false);
+    }
+    setActiveSuggestionIndex(-1);
   };
 
   const handleToggle = async (item: Item) => {
@@ -148,20 +318,30 @@ function App() {
       )}
 
       <form className="add-form" onSubmit={handleSubmit}>
-        <div className="add-row">
+        <div className="add-row" ref={addFormRef}>
           <input
+            ref={nameInputRef}
             className="add-input"
             type="text"
             placeholder="Add item…"
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={handleInputKeyDown}
+            onChange={(e) => handleNameChange(e.target.value)}
+            onKeyDown={handleNameKeyDown}
+            onBlur={handleNameBlur}
             autoFocus
             aria-label="Item name"
           />
           <button className="add-btn" type="submit" disabled={!canSubmit} aria-label="Add item">
             {submitting ? 'Adding…' : 'Add'}
           </button>
+          {suggestionsOpen && suggestions.length > 0 && (
+            <SuggestionList
+              suggestions={suggestions}
+              activeIndex={activeSuggestionIndex}
+              onSelect={handleSelectSuggestion}
+              query={name.trim()}
+            />
+          )}
         </div>
         <div className="add-details">
           <input

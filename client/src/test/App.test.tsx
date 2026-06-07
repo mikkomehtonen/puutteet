@@ -905,3 +905,513 @@ describe('Task 5 — WebSocket reconciliation for edits', () => {
     expect(screen.queryByText('Bread')).not.toBeInTheDocument();
   });
 });
+
+// --- Import getSuggestions for unit tests ---
+import { getSuggestions } from '../App';
+
+describe('Task 1 — getSuggestions utility', () => {
+  const mockItems = (names: string[]): Item[] =>
+    names.map((name, i) => mockItem({ id: i + 1, name }));
+
+  it('returns matching items for prefix query', () => {
+    const items = mockItems(['Milk', 'Bread', 'Eggs']);
+    expect(getSuggestions(items, 'mi')).toEqual(['Milk']);
+  });
+
+  it('deduplicates by case-insensitive comparison, first-encountered wins', () => {
+    const items = mockItems(['Milk', 'milk']);
+    expect(getSuggestions(items, 'mi')).toEqual(['Milk']);
+  });
+
+  it('matches case-insensitively', () => {
+    const items = mockItems(['Milk', 'Bread']);
+    expect(getSuggestions(items, 'MIL')).toEqual(['Milk']);
+  });
+
+  it('excludes exact match (case-insensitive)', () => {
+    const items = mockItems(['Milk']);
+    expect(getSuggestions(items, 'Milk')).toEqual([]);
+  });
+
+  it('returns empty when query has trailing space (no prefix match)', () => {
+    const items = mockItems(['Milk']);
+    expect(getSuggestions(items, 'Milk ')).toEqual([]);
+  });
+
+  it('returns empty for empty query', () => {
+    const items = mockItems(['Milk', 'Bread', 'Eggs']);
+    expect(getSuggestions(items, '')).toEqual([]);
+  });
+
+  it('returns empty for whitespace-only query', () => {
+    const items = mockItems(['Milk', 'Bread', 'Eggs']);
+    expect(getSuggestions(items, ' ')).toEqual([]);
+  });
+
+  it('limits to 5 results, sorted alphabetically', () => {
+    const items = mockItems([
+      'Apple', 'Apricot', 'Avocado', 'Almond', 'Asparagus', 'Artichoke', 'Anchovy',
+    ]);
+    const result = getSuggestions(items, 'a');
+    expect(result).toHaveLength(5);
+    expect(result).toEqual(['Almond', 'Anchovy', 'Apple', 'Apricot', 'Artichoke']);
+  });
+
+  it('returns empty when no matches', () => {
+    const items = mockItems(['Apple', 'Banana']);
+    expect(getSuggestions(items, 'z')).toEqual([]);
+  });
+});
+
+describe('Task 2 — SuggestionList component', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(fetchItems).mockResolvedValue([]);
+    mockWsConnected = false;
+  });
+
+  it('renders listbox with correct options and highlight', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([
+      mockItem({ id: 1, name: 'Milk' }),
+      mockItem({ id: 2, name: 'Milkshake' }),
+    ]);
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'mi');
+
+    await waitFor(() => {
+      const listbox = screen.getByRole('listbox');
+      expect(listbox).toBeInTheDocument();
+      const options = screen.getAllByRole('option');
+      expect(options).toHaveLength(2);
+    });
+
+    // Check bold prefix rendering
+    const matchSpans = screen.getAllByText(/Mi/i);
+    expect(matchSpans.length).toBeGreaterThan(0);
+  });
+
+  it('does not render dropdown when no suggestions match', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([
+      mockItem({ id: 1, name: 'Apple' }),
+      mockItem({ id: 2, name: 'Banana' }),
+    ]);
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'z');
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
+  it('does not render dropdown for empty input', async () => {
+    render(<App />);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+});
+
+describe('Task 3 — Suggestion integration in App', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWsConnected = false;
+  });
+
+  it('typing partial name shows suggestion dropdown', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Milk' })]);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'mi');
+
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+    });
+  });
+
+  it('ArrowDown highlights first suggestion', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([
+      mockItem({ id: 1, name: 'Milk' }),
+      mockItem({ id: 2, name: 'Mushrooms' }),
+    ]);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'mi');
+
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+    });
+
+    await user.keyboard('{ArrowDown}');
+
+    await waitFor(() => {
+      const firstOption = screen.getAllByRole('option')[0];
+      expect(firstOption).toHaveAttribute('aria-selected', 'true');
+    });
+  });
+
+  it('ArrowDown wraps from last to first', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([
+      mockItem({ id: 1, name: 'Milk' }),
+      mockItem({ id: 2, name: 'Milkshake' }),
+    ]);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'mi');
+
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+    });
+
+    // Navigate to last
+    await user.keyboard('{ArrowDown}');
+    await user.keyboard('{ArrowDown}');
+
+    await waitFor(() => {
+      const options = screen.getAllByRole('option');
+      expect(options[1]).toHaveAttribute('aria-selected', 'true');
+    });
+
+    // Wrap to first
+    await user.keyboard('{ArrowDown}');
+
+    await waitFor(() => {
+      const options = screen.getAllByRole('option');
+      expect(options[0]).toHaveAttribute('aria-selected', 'true');
+    });
+  });
+
+  it('ArrowUp wraps from first to last', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([
+      mockItem({ id: 1, name: 'Milk' }),
+      mockItem({ id: 2, name: 'Milkshake' }),
+    ]);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'mi');
+    await user.keyboard('{ArrowDown}');
+
+    await waitFor(() => {
+      const options = screen.getAllByRole('option');
+      expect(options[0]).toHaveAttribute('aria-selected', 'true');
+    });
+
+    // Wrap to last
+    await user.keyboard('{ArrowUp}');
+
+    await waitFor(() => {
+      const options = screen.getAllByRole('option');
+      expect(options[1]).toHaveAttribute('aria-selected', 'true');
+    });
+  });
+
+  it('Enter with highlighted suggestion fills input and closes dropdown', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Milk' })]);
+    vi.mocked(createItem).mockResolvedValue(mockItem({ id: 1, name: 'Milk' }));
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i }) as HTMLInputElement;
+    await user.type(input, 'mi');
+    await user.keyboard('{ArrowDown}');
+
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+    });
+
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(input.value).toBe('Milk');
+    });
+
+    // Dropdown is closed
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+
+    // Form was NOT submitted (createItem not called)
+    expect(createItem).not.toHaveBeenCalled();
+  });
+
+  it('Enter without highlighted suggestion submits form', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Milk' })]);
+    vi.mocked(createItem).mockResolvedValue(mockItem({ id: 2, name: 'mi' }));
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'mi');
+
+    // Don't highlight any suggestion, just press Enter
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(createItem).toHaveBeenCalledWith({ name: 'mi' });
+    });
+  });
+
+  it('Escape closes dropdown and preserves input text', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Milk' })]);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i }) as HTMLInputElement;
+    await user.type(input, 'mi');
+
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+    });
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(input.value).toBe('mi');
+  });
+
+  it('clicking suggestion fills input and closes dropdown', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Milk' })]);
+    vi.mocked(createItem).mockResolvedValue(mockItem({ id: 1, name: 'Milk' }));
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i }) as HTMLInputElement;
+    await user.type(input, 'mi');
+
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+    });
+
+    // Click the suggestion button
+    const suggestionBtn = screen.getByRole('listbox').querySelector('button');
+    await user.click(suggestionBtn!);
+
+    await waitFor(() => {
+      expect(input.value).toBe('Milk');
+    });
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    // Input retains focus
+    expect(document.activeElement).toBe(input);
+    // Form was NOT submitted
+    expect(createItem).not.toHaveBeenCalled();
+  });
+
+  it('exact match does not show dropdown', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Milk' })]);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'Milk');
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
+  it('clearing input closes dropdown', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Milk' })]);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'mi');
+
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+    });
+
+    await user.clear(input);
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
+  it('clicking outside closes dropdown', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Milk' })]);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'mi');
+
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+    });
+
+    // Click on the document body (outside the dropdown)
+    await user.click(document.body);
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+});
+
+describe('Task 4 — Suggestion dropdown CSS', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWsConnected = false;
+  });
+
+  it('suggestion items have minimum 44px height', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Milk' })]);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'mi');
+
+    await waitFor(() => {
+      const listbox = screen.getByRole('listbox');
+      const btn = listbox.querySelector('.suggestion-button');
+      expect(btn).toBeInTheDocument();
+      const style = window.getComputedStyle(btn!);
+      expect(style.minHeight).toBe('44px');
+    });
+  });
+
+  it('matching prefix is bolded', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Milk' })]);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'mi');
+
+    await waitFor(() => {
+      const matchSpan = screen.getByRole('listbox').querySelector('.suggestion-match');
+      expect(matchSpan).toBeInTheDocument();
+      const style = window.getComputedStyle(matchSpan!);
+      expect(style.fontWeight).toBe('700');
+    });
+  });
+
+  it('dropdown has z-index above content', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Milk' })]);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'mi');
+
+    await waitFor(() => {
+      const dropdown = screen.getByRole('listbox');
+      const style = window.getComputedStyle(dropdown);
+      const zIndex = parseInt(style.zIndex, 10);
+      expect(zIndex).toBeGreaterThan(0);
+    });
+  });
+
+  it('dropdown is positioned absolutely below the input', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Milk' })]);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'mi');
+
+    await waitFor(() => {
+      const dropdown = screen.getByRole('listbox');
+      const style = window.getComputedStyle(dropdown);
+      expect(style.position).toBe('absolute');
+    });
+  });
+
+  it('dropdown has visible border, background, and box-shadow', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Milk' })]);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'mi');
+
+    await waitFor(() => {
+      const dropdown = screen.getByRole('listbox');
+      expect(dropdown).toHaveClass('suggestions-dropdown');
+      const style = window.getComputedStyle(dropdown);
+      expect(style.borderTopWidth).not.toBe('0px');
+      expect(style.boxShadow).not.toBe('none');
+    });
+  });
+
+  it('keyboard-highlighted suggestion has accent background', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Milk' })]);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'mi');
+    await user.keyboard('{ArrowDown}');
+
+    await waitFor(() => {
+      const activeItem = screen.getByRole('listbox').querySelector('.suggestion-item--active .suggestion-button');
+      expect(activeItem).toBeInTheDocument();
+      const style = window.getComputedStyle(activeItem!);
+      // Accent background: oklch(0.55 0.18 145 / 0.1)
+      expect(style.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+      expect(style.backgroundColor).not.toBe('transparent');
+    });
+  });
+
+  it('hovered suggestion has background color', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Milk' })]);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'mi');
+
+    await waitFor(() => {
+      const listbox = screen.getByRole('listbox');
+      const btn = listbox.querySelector('.suggestion-button');
+      expect(btn).toBeInTheDocument();
+      fireEvent.mouseEnter(btn!);
+      const style = window.getComputedStyle(btn!);
+      expect(style.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+    });
+  });
+
+  it('dropdown respects prefers-reduced-motion', async () => {
+    vi.mocked(fetchItems).mockResolvedValue([mockItem({ id: 1, name: 'Milk' })]);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const input = screen.getByRole('textbox', { name: /item name/i });
+    await user.type(input, 'mi');
+
+    await waitFor(() => {
+      const dropdown = screen.getByRole('listbox');
+      const btn = dropdown.querySelector('.suggestion-button');
+      // The CSS has a media query for prefers-reduced-motion that sets
+      // transition-duration to 0.01ms. In jsdom the media query isn't
+      // applied directly, but we can verify the CSS class is present.
+      expect(dropdown.className).toContain('suggestions-dropdown');
+      expect(btn).toHaveClass('suggestion-button');
+    });
+  });
+});

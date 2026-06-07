@@ -8,6 +8,7 @@ Puutteet (Finnish for "shortages" or "things missing") is a self-hosted shopping
 - **Docker Support** — Dockerfile and .dockerignore for building and running the app in a container ([story](stories/002-docker-support/story.md))
 - **Real-Time Sync** — WebSocket-based push so all connected tabs and devices see changes immediately without reloading ([story](stories/003-realtime-sync/story.md))
 - **Edit Items** — inline editing of name, quantity, and note for active (non-purchased) items; purchased items must be restored first ([story](stories/004-edit-items/story.md))
+- **Item Suggestions** — autocomplete suggestions in the add-item input based on previously used item names, with case-insensitive prefix matching and keyboard navigation ([story](stories/005-item-suggestions/story.md))
 
 ## Non-Goals
 
