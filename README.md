@@ -1,6 +1,6 @@
 # Puutteet
 
-A single-user, self-hosted shopping list web application. Add items as you notice things running low, then check the list while shopping and mark items as bought.
+A single-user, self-hosted shopping list web application. Add items as you notice things running low, then check the list while shopping and mark items as bought. Changes sync in real time across open tabs via WebSocket.
 
 Built with Express + SQLite (backend) and React + Vite (frontend). Runs on a private home server accessed through Tailscale.
 
@@ -8,6 +8,7 @@ Built with Express + SQLite (backend) and React + Vite (frontend). Runs on a pri
 
 - [Node.js](https://nodejs.org/) v20+ (v24+ recommended for `--env-file` support)
 - npm 9+
+- (Optional) Docker for containerized deployment
 
 ## Quick start
 
@@ -38,6 +39,20 @@ npm start
 # The app is served at http://localhost:3000
 ```
 
+## Docker
+
+Build and run with Docker:
+
+```bash
+# Build the image
+docker build -t puutteet .
+
+# Run with a volume for data persistence
+docker run -d -p 3000:3000 -v puutteet-data:/app/data puutteet
+```
+
+The image is based on `node:22-alpine`, runs as a non-root `node` user, and exposes port 3000.
+
 ## Configuration
 
 All environment variables are optional, with sensible defaults.
@@ -65,13 +80,20 @@ The project uses npm workspaces with two packages:
 - **`server/`** — Express API server (TypeScript, compiled with `tsc`)
 - **`client/`** — React frontend (Vite + TypeScript)
 
-Run `npm run dev` from the root to start both with hot reload. The Vite dev server proxies `/api` requests to Express on port 3000.
+Run `npm run dev` from the root to start both with hot reload. The Vite dev server proxies `/api` and `/ws` requests to Express on port 3000.
 
 ## Running tests
 
 ```bash
+# Run all tests (server unit + client unit + integration tests)
 npm test
 ```
+
+Tests are organized in three layers:
+
+- **Server unit tests** — `server/src/test/` (Vitest, Node environment)
+- **Client unit tests** — `client/src/test/` (Vitest, jsdom environment)
+- **Integration tests** — `tests/` (build verification, dev server, production serving, Docker)
 
 ## Backing up the database
 
@@ -102,10 +124,13 @@ npm start
 puutteet/
 ├── server/               # Express + TypeScript backend
 │   ├── src/
-│   │   ├── index.ts      # Server entry, static serving, error middleware
+│   │   ├── index.ts      # Server entry, static serving, WebSocket init
 │   │   ├── db.ts         # SQLite connection, schema init
 │   │   ├── items.ts      # Route handlers for /api/items
-│   │   └── types.ts      # TypeScript interfaces
+│   │   ├── ws.ts         # WebSocket server for real-time sync
+│   │   ├── types.ts      # TypeScript interfaces
+│   │   └── test/         # Server unit tests
+│   ├── vitest.config.ts  # Server test config
 │   └── package.json
 ├── client/               # React + Vite + TypeScript frontend
 │   ├── src/
@@ -113,11 +138,20 @@ puutteet/
 │   │   ├── App.css       # Styles with CSS custom properties
 │   │   ├── main.tsx      # Entry point
 │   │   ├── api.ts        # Fetch wrapper for API calls
-│   │   └── types.ts      # Shared TypeScript interfaces
+│   │   ├── useWebSocket.ts # WebSocket hook for real-time updates
+│   │   ├── types.ts      # Shared TypeScript interfaces
+│   │   └── test/         # Client unit tests
 │   ├── index.html
-│   ├── vite.config.ts    # Vite config with /api proxy
+│   ├── vite.config.ts    # Vite config with /api and /ws proxy
+│   ├── vitest.config.ts  # Client test config
 │   └── package.json
+├── tests/                # Integration tests
+│   ├── integration.test.ts
+│   └── docker.test.ts
+├── vitest.config.ts      # Root integration test config
 ├── data/                 # SQLite database file (created at runtime)
+├── Dockerfile            # Multi-stage Docker build
+├── .dockerignore         # Docker build exclusions
 ├── .env.example          # Environment variable documentation
 ├── package.json          # Root workspace config
 └── tsconfig.base.json    # Shared TypeScript config
@@ -129,6 +163,7 @@ puutteet/
 - **TypeScript** with strict mode
 - **Express** 5.2.1 — backend framework
 - **better-sqlite3** 12.10.0 — synchronous SQLite3 binding
+- **ws** 8.21.0 — WebSocket library for real-time sync
 - **React** 19.2.7 — frontend framework
 - **Vite** 6.x — frontend build tool
 - **Vitest** 4.x — test runner
