@@ -72,6 +72,14 @@
 
 ---
 
+## Tests with `if (existsSync(...))` guards silently pass when files are missing
+**Date**: 2026-06-10
+**Area**: testing
+**What happened**: AC3/AC4 integration tests wrapped dist-file assertions in `if (existsSync(...))` guards. When the build output was missing, the tests silently passed — zero assertions ran — giving false confidence that the build pipeline was working.
+**Takeaway**: When verifying build output or file artifacts, assert directly with `expect(existsSync(path)).toBe(true)`. Never use an `if` guard that skips assertions when the precondition fails. If the test requires a build, run it in a `beforeAll` within the same `describe` block so the dependency is explicit.
+
+---
+
 ## jsdom doesn't serialize oklch() colors in computed styles
 **Date**: 2026-06-07
 **Area**: testing

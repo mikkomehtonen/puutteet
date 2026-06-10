@@ -9,6 +9,7 @@ Puutteet (Finnish for "shortages" or "things missing") is a self-hosted shopping
 - **Real-Time Sync** — WebSocket-based push so all connected tabs and devices see changes immediately without reloading ([story](stories/003-realtime-sync/story.md))
 - **Edit Items** — inline editing of name, quantity, and note for active (non-purchased) items; purchased items must be restored first ([story](stories/004-edit-items/story.md))
 - **Item Suggestions** — autocomplete suggestions in the add-item input based on previously used item names, with case-insensitive prefix matching and keyboard navigation ([story](stories/005-item-suggestions/story.md))
+- **Favicon Endpoint** — the shopping cart favicon is served as a standalone SVG file at `/favicon.svg` so external dashboards can reference it directly ([story](stories/006-serve-favicon-svg/story.md))
 
 ## Non-Goals
 

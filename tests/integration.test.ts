@@ -131,6 +131,15 @@ describe('Task 1 AC4 / Task 6 AC2 — Production serving', () => {
     expect(html).toContain('<!doctype html>');
     expect(html).toContain('Shopping List');
   });
+
+  it('AC: GET /favicon.svg returns 200 with SVG content', async () => {
+    const faviconRes = await fetch(`http://localhost:${PORT}/favicon.svg`);
+    expect(faviconRes.status).toBe(200);
+    const contentType = faviconRes.headers.get('Content-Type') ?? '';
+    expect(contentType).toContain('image/svg+xml');
+    const body = await faviconRes.text();
+    expect(body).toContain('🛒');
+  });
 });
 
 // Helper: kill a process group by PID
@@ -248,6 +257,41 @@ describe('Task 6 AC6-8 — Mobile/responsive CSS', () => {
   it('AC8: Body/app container prevents horizontal overflow', () => {
     const css = readFileSync(path.join(ROOT, 'client', 'src', 'App.css'), 'utf-8');
     expect(css).toContain('overflow');
+  });
+});
+
+describe('Task 6 AC1-4 — favicon.svg static file', () => {
+  beforeAll(() => {
+    execSync('npm run build', { cwd: ROOT, encoding: 'utf-8', timeout: 120000 });
+  }, 130000);
+
+  it('AC1: client/public/favicon.svg exists with SVG and emoji', () => {
+    const favicon = readFileSync(path.join(ROOT, 'client', 'public', 'favicon.svg'), 'utf-8');
+    expect(favicon).toContain('xmlns="http://www.w3.org/2000/svg"');
+    expect(favicon).toContain('🛒');
+  });
+
+  it('AC2: client/index.html references /favicon.svg (not data URI)', () => {
+    const html = readFileSync(path.join(ROOT, 'client', 'index.html'), 'utf-8');
+    expect(html).toContain('href="/favicon.svg"');
+    expect(html).toContain('type="image/svg+xml"');
+    expect(html).not.toContain('data:image/svg+xml');
+  });
+
+  it('AC3: npm run build copies favicon.svg to client/dist', () => {
+    const distFavicon = path.join(ROOT, 'client', 'dist', 'favicon.svg');
+    expect(existsSync(distFavicon)).toBe(true);
+    const sourceFavicon = readFileSync(path.join(ROOT, 'client', 'public', 'favicon.svg'), 'utf-8');
+    const distFaviconContent = readFileSync(distFavicon, 'utf-8');
+    expect(distFaviconContent).toBe(sourceFavicon);
+  });
+
+  it('AC4: built client/dist/index.html retains favicon reference', () => {
+    const distIndex = path.join(ROOT, 'client', 'dist', 'index.html');
+    expect(existsSync(distIndex)).toBe(true);
+    const html = readFileSync(distIndex, 'utf-8');
+    expect(html).toContain('href="/favicon.svg"');
+    expect(html).toContain('type="image/svg+xml"');
   });
 });
 
