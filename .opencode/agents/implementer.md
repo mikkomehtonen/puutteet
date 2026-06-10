@@ -7,7 +7,7 @@ description: >
   Output: completion report with reviewer SHA verdicts.
 mode: all
 temperature: 0.2
-model: llamacpp/qwen36-27b
+model: firepass/accounts/fireworks/models/deepseek-v4-pro
 tools:
   question: false
   task: true

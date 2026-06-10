@@ -7,7 +7,7 @@ description: >
   Output: committed story file with acceptance criteria and implementation approach.
 mode: all
 temperature: 0.2
-model: opencode-go/glm-5.1
+model: firepass/accounts/fireworks/models/glm-5p1
 tools:
   task: true
   grep: false

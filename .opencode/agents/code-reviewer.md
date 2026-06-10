@@ -7,7 +7,7 @@ description: >
   Output: Pass/Fail report with file:line findings committed to git.
 mode: subagent
 temperature: 0
-model: opencode-go/glm-5.1
+model: firepass/accounts/fireworks/models/glm-5p1
 variant: low
 tools:
   edit: false
